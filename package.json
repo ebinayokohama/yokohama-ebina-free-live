@@ -1,0 +1,139 @@
+{
+  "name": "yokohama-ebina-free-live",
+  "version": "1.0.0",
+  "scripts": {
+    "fetch": "node scripts/fetch-lives.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0-rc.12"
+  }
+}
+```
+
+**scripts/fetch-lives.js**（メインのスクレイピングスクリプト）
+```javascript
+const axios = require('axios');
+const cheerio = require('cheerio');
+const fs = require('fs');
+
+const KEYWORDS = '(横浜 OR 海老名) (フリーライブ OR ミニライブ OR "無料ライブ" OR 無銭 OR ストリートライブ OR インストア)';
+
+async function fetchYahooRealtime() {
+  try {
+    // Yahoo!リアルタイム検索のURL（キーワード検索）
+    const url = `https://search.yahoo.co.jp/realtime/search?p=${encodeURIComponent(KEYWORDS)}&ei=UTF-8`;
+    
+    const { data } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const $ = cheerio.load(data);
+    const lives = [];
+
+    // 投稿のセレクタ（Yahooの構造は変わりやすいので調整が必要）
+    $('.result').each((i, el) => {
+      const text = $(el).find('.content').text().trim();
+      const link = $(el).find('a').attr('href');
+      const time = $(el).find('.time').text().trim() || '時間不明';
+
+      if (text && (text.includes('ライブ') || text.includes('演奏') || text.includes('歌'))) {
+        lives.push({
+          time: time,
+          content: text.replace(/\n/g, ' ').substring(0, 200) + '...',
+          link: link || '#'
+        });
+      }
+    });
+
+    // 重複除去（簡易）
+    const uniqueLives = lives.filter((v, i, a) => a.findIndex(t => t.content === v.content) === i);
+
+    // HTML生成（Google Sitesに貼りやすいシンプルデザイン）
+    let html = `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今日の横浜・海老名 無料ライブ情報</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; background: #f8f9fa; }
+    h1 { color: #d32f2f; }
+    .live { background: white; margin: 15px 0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .time { color: #666; font-size: 0.9em; }
+    a { color: #1976d2; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>🆓 今日の横浜・海老名 無料ライブ情報</h1>
+  <p>更新日時: ${new Date().toLocaleString('ja-JP')}</p>
+    `;
+
+    if (uniqueLives.length === 0) {
+      html += '<p>本日該当する無料ライブ情報は見つかりませんでした。手動でYahoo!リアルタイム検索を確認してください。</p>';
+    } else {
+      uniqueLives.forEach(live => {
+        html += `
+        <div class="live">
+          <div class="time">🕒 ${live.time}</div>
+          <div>${live.content}</div>
+          <a href="${live.link}" target="_blank">→ 詳細を見る (X/Twitter)</a>
+        </div>`;
+      });
+    }
+
+    html += '</body></html>';
+
+    fs.writeFileSync('public/today.html', html);
+    console.log(`✅ ${uniqueLives.length}件のライブ情報を取得しました。`);
+
+  } catch (error) {
+    console.error('❌ エラー:', error.message);
+    const errorHtml = `<h1>エラーが発生しました</h1><p>${error.message}</p><p>GitHub Actionsのログを確認してください。</p>`;
+    fs.writeFileSync('public/today.html', errorHtml);
+  }
+}
+
+fetchYahooRealtime();
+```
+
+**public/today.html**（最初は空でもOK、実行後に自動生成されます）
+
+**.github/workflows/daily-update.yml**（毎日自動実行）
+```yaml
+name: Daily Free Live Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 毎日日本時間9時（UTC 0時）
+  workflow_dispatch:      # 手動実行も可能
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Fetch live information
+        run: npm run fetch
+
+      - name: Commit and push changes
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add public/today.html
+          git commit -m "Daily update: Free live info ${date}" || echo "No changes"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

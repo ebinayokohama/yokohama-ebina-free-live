@@ -4,10 +4,10 @@ const fs = require('fs');
 
 async function fetchYahooRealtime() {
   try {
-    console.log('🔍 Yahoo!リアルタイム検索から横浜・海老名 無料/路上ライブ情報を取得中...');
+    console.log('🔍 Yahoo!リアルタイム検索から横浜・海老名の無料ライブ情報を取得中...');
 
-    // 強化された検索キーワード（路上ライブ対応）
-    const keywords = '(横浜 OR 海老名) (フリーライブ OR ミニライブ OR 無料ライブ OR 無銭 OR 路上ライブ OR ストリートライブ OR 弾き語り OR アコースティック OR インストアライブ OR 公園ライブ)';
+    // 検索キーワード（路上系除外済み）
+    const keywords = `(横浜 OR 海老名) (無料ライブ OR フリーライブ OR ミニライブ OR インストアライブ OR リリイベ OR リリースイベント OR Niigoひろば OR クィーンズスクウェア OR 日本丸メモリアルパーク OR 海老名中央公園 OR 横浜ワールドポーターズ)`;
     const url = `https://search.yahoo.co.jp/realtime/search?p=${encodeURIComponent(keywords)}`;
 
     const { data } = await axios.get(url, {
@@ -20,7 +20,6 @@ async function fetchYahooRealtime() {
     const $ = cheerio.load(data);
     const lives = [];
 
-    // 複数のセレクタで拾う（2026年対応強化）
     $('.result, .stream-item, article, .post, [data-testid], .content').each((i, el) => {
       const fullText = $(el).text().trim();
       if (fullText.length < 25) return;
@@ -28,17 +27,16 @@ async function fetchYahooRealtime() {
       const link = $(el).find('a').first().attr('href') || '#';
       const timeText = $(el).find('time, .time, .date, .timestamp').text().trim() || '時間不明';
 
-      // ライブ関連キーワードでフィルタリング
-      if (fullText.match(/ライブ|路上|ストリート|弾き語り|アコースティック|無銭|無料|フリーライブ|ミニライブ/i)) {
+      // 必須キーワードだけを抽出（除外キーワードなし）
+      if (fullText.match(/無料ライブ|フリーライブ|ミニライブ|インストアライブ|リリイベ|リリースイベント|Niigoひろば|クィーンズスクウェア|日本丸メモリアルパーク|海老名中央公園|横浜ワールドポーターズ/i)) {
         lives.push({
           time: timeText,
           content: fullText.replace(/\s+/g, ' ').substring(0, 250) + '...',
-          link: link.startsWith('http') ? link : `https://search.yahoo.co.jp/realtime/search?p=${encodeURIComponent(keywords)}`
+          link: link.startsWith('http') ? link : url
         });
       }
     });
 
-    // 重複除去 + 最新順で最大15件
     const uniqueLives = [...new Map(lives.map(item => [item.content, item])).values()].slice(0, 15);
 
     let html = `<!DOCTYPE html>
@@ -46,7 +44,7 @@ async function fetchYahooRealtime() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>今日の横浜・海老名 無料・路上ライブ情報</title>
+  <title>今日の横浜・海老名 無料ライブ情報</title>
   <style>
     body { font-family: system-ui, sans-serif; padding: 20px; background: #f8f9fa; line-height: 1.7; }
     h1 { color: #d32f2f; font-size: 1.8em; }
@@ -59,14 +57,14 @@ async function fetchYahooRealtime() {
   </style>
 </head>
 <body>
-  <h1>🆓 今日の横浜・海老名 無料・路上ライブ情報</h1>
+  <h1>🆓 今日の横浜・海老名 無料ライブ情報</h1>
   <p class="update">更新日時: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</p>`;
 
     if (uniqueLives.length === 0) {
       html += `<div class="no-result">
-        <p>本日該当する無料・路上ライブ情報は見つかりませんでした。</p>
+        <p>本日該当する無料ライブ情報は見つかりませんでした。</p>
         <p>直接Yahoo!リアルタイム検索で確認 → 
-        <a href="https://search.yahoo.co.jp/realtime/search?p=${encodeURIComponent(keywords)}" target="_blank">検索ページを開く</a></p>
+        <a href="${url}" target="_blank">検索ページを開く</a></p>
       </div>`;
     } else {
       uniqueLives.forEach(live => {
@@ -80,9 +78,8 @@ async function fetchYahooRealtime() {
     }
 
     html += '</body></html>';
-
     fs.writeFileSync('today.html', html);
-    console.log(`✅ ${uniqueLives.length}件の無料・路上ライブ情報を取得しました！`);
+    console.log(`✅ ${uniqueLives.length}件の無料ライブ情報を取得しました！`);
 
   } catch (error) {
     console.error('❌ エラー:', error.message);

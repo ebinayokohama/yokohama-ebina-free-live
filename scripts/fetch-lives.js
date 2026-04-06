@@ -7,7 +7,7 @@ async function fetchYahooRealtime() {
     console.log('🔍 Yahoo!リアルタイム検索から横浜・海老名の無料ライブ情報を取得中...');
 
     // 取得対象キーワード（追加分も含む）
-    const keywords = '(横浜 OR 海老名) (リリイベ OR リリースイベント OR Niigoひろば OR クィーンズスクウェア OR 日本丸メモリアルパーク OR 海老名中央公園 OR 横浜ワールドポーターズ)';
+    const keywords = '(横浜 OR 海老名) (リリイベ OR リリースイベント OR Niigoひろば OR Niigo広場 OR クイーンズスクウェア横浜 OR 日本丸メモリアルパーク OR 海老名中央公園 OR 横浜ワールドポーターズ)';
     
     // 除外キーワード
     const excludePattern = /(路上ライブ|弾き語り|公園ライブ|野外ライブ)/i;
